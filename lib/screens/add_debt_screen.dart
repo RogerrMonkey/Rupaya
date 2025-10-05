@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/database_service.dart';
 import '../services/auth_service.dart';
-import '../services/voice_input_service.dart';
-import '../services/voice_permission_manager.dart';
+import '../services/notification_service.dart';
+import '../widgets/voice_input_dialog_v2.dart';
 import '../models/debt.dart';
 
 class AddDebtScreen extends StatefulWidget {
@@ -447,65 +447,33 @@ class _AddDebtScreenState extends State<AddDebtScreen> {
   }
 
   Future<void> _startVoiceInput() async {
-    // Check permissions
-    bool hasPermission = await VoicePermissionManager.checkAndRequestPermission(
-      context,
-      widget.selectedLanguage,
-    );
-
-    if (!hasPermission) {
-      return;
-    }
-
     setState(() {
       _isListening = true;
     });
 
-    final voiceService = VoiceInputService();
-    voiceService.setLanguage(widget.selectedLanguage);
-
-    await voiceService.listen(
-      onResult: (text) async {
-        setState(() {
-          _isListening = false;
-        });
-
-        // Parse the voice input
-        final parsed = await voiceService.parseAndCreateTransaction(
-          text,
-          widget.selectedLanguage,
-        );
-
-        // If it's a debt, fill the form
-        if ((parsed['type'] == 'debt_i_owe' || parsed['type'] == 'debt_owed_to_me') && 
-            parsed['amount'] != null) {
-          setState(() {
-            _amountController.text = parsed['amount'].toString();
-            _debtDirection = parsed['type'] == 'debt_i_owe' ? 'owe' : 'owed';
-            if (parsed['personName'] != null && parsed['personName'] != 'Unknown') {
-              _personController.text = parsed['personName'];
-            }
-            if (parsed['description'] != null) {
-              _notesController.text = parsed['description'];
-            }
-          });
-
-          // Show success feedback
-          await voiceService.speak(_getVoiceText('detected'));
-        }
-      },
-      onError: (error) {
-        setState(() {
-          _isListening = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(error),
-            backgroundColor: Colors.red,
-          ),
-        );
-      },
+    // Show new voice input dialog
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => VoiceInputDialogV2(
+        initialLanguage: widget.selectedLanguage,
+        onComplete: (success) {
+          if (success) {
+            // Transaction was created, go back
+            Navigator.of(context).pop(true);
+          }
+        },
+      ),
     );
+
+    setState(() {
+      _isListening = false;
+    });
+
+    // If transaction was created, close this screen
+    if (result == true && mounted) {
+      Navigator.of(context).pop(true);
+    }
   }
 
   Future<void> _selectCreationDate() async {
@@ -607,6 +575,9 @@ class _AddDebtScreenState extends State<AddDebtScreen> {
       });
 
       if (result['success']) {
+        // Schedule debt reminders
+        NotificationService.scheduleDebtReminders();
+        
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

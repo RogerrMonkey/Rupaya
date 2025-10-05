@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/income.dart';
 import '../services/database_service.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 
 class AddIncomeScreen extends StatefulWidget {
   final String selectedLanguage;
@@ -219,6 +220,9 @@ class _AddIncomeScreenState extends State<AddIncomeScreen> {
       final success = await DatabaseService.addIncome(income);
 
       if (success) {
+        // Check income goal progress
+        NotificationService.checkIncomeGoalProgress();
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

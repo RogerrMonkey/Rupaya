@@ -8,6 +8,7 @@ class User {
   final double? monthlyIncome;
   final int? incomeDay; // Day of month when income is received (1-31)
   final double? monthlyIncomeGoal; // Monthly income target/goal
+  final double? savingsGoal; // Savings target amount
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -21,6 +22,7 @@ class User {
     this.monthlyIncome,
     this.incomeDay,
     this.monthlyIncomeGoal,
+    this.savingsGoal,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -37,6 +39,7 @@ class User {
       if (monthlyIncome != null) 'monthlyIncome': monthlyIncome,
       if (incomeDay != null) 'incomeDay': incomeDay,
       if (monthlyIncomeGoal != null) 'monthlyIncomeGoal': monthlyIncomeGoal,
+      if (savingsGoal != null) 'savingsGoal': savingsGoal,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -45,7 +48,7 @@ class User {
   // Create from JSON response
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: json['_id'],
+      id: json['id']?.toString() ?? json['_id']?.toString(), // Support both SQLite (id) and MongoDB (_id)
       name: json['name'],
       phoneNumber: json['phoneNumber'],
       pinHash: json['pinHash'],
@@ -54,6 +57,7 @@ class User {
       monthlyIncome: (json['monthlyIncome'] as num?)?.toDouble(),
       incomeDay: json['incomeDay'] as int?,
       monthlyIncomeGoal: (json['monthlyIncomeGoal'] as num?)?.toDouble(),
+      savingsGoal: (json['savingsGoal'] as num?)?.toDouble(),
       createdAt: DateTime.parse(json['createdAt']),
       updatedAt: DateTime.parse(json['updatedAt']),
     );
@@ -70,6 +74,7 @@ class User {
     double? monthlyIncome,
     int? incomeDay,
     double? monthlyIncomeGoal,
+    double? savingsGoal,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -83,6 +88,7 @@ class User {
       monthlyIncome: monthlyIncome ?? this.monthlyIncome,
       incomeDay: incomeDay ?? this.incomeDay,
       monthlyIncomeGoal: monthlyIncomeGoal ?? this.monthlyIncomeGoal,
+      savingsGoal: savingsGoal ?? this.savingsGoal,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

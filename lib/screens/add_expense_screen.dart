@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/database_service.dart';
 import '../services/auth_service.dart';
-import '../services/voice_input_service.dart';
-import '../services/voice_permission_manager.dart';
+import '../services/notification_service.dart';
+import '../widgets/voice_input_dialog_v2.dart';
 import '../models/expense.dart';
 
 class AddExpenseScreen extends StatefulWidget {
@@ -32,6 +32,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     {'name': 'health', 'icon': Icons.local_hospital, 'color': Color(0xFF4CAF50)},
     {'name': 'entertainment', 'icon': Icons.movie, 'color': Color(0xFFFF9800)},
     {'name': 'education', 'icon': Icons.school, 'color': Color(0xFF3F51B5)},
+    {'name': 'savings', 'icon': Icons.savings, 'color': Color(0xFF2E7D32)},
     {'name': 'misc', 'icon': Icons.category, 'color': Color(0xFF607D8B)},
   ];
 
@@ -314,63 +315,33 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   Future<void> _startVoiceInput() async {
-    // Check permissions
-    bool hasPermission = await VoicePermissionManager.checkAndRequestPermission(
-      context,
-      widget.selectedLanguage,
-    );
-
-    if (!hasPermission) {
-      return;
-    }
-
     setState(() {
       _isListening = true;
     });
 
-    final voiceService = VoiceInputService();
-    voiceService.setLanguage(widget.selectedLanguage);
-
-    await voiceService.listen(
-      onResult: (text) async {
-        setState(() {
-          _isListening = false;
-        });
-
-        // Parse the voice input
-        final parsed = await voiceService.parseAndCreateTransaction(
-          text,
-          widget.selectedLanguage,
-        );
-
-        // If it's an expense, fill the form
-        if (parsed['type'] == 'expense' && parsed['amount'] != null) {
-          setState(() {
-            _amountController.text = parsed['amount'].toString();
-            if (parsed['category'] != null) {
-              _selectedCategory = parsed['category'];
-            }
-            if (parsed['description'] != null) {
-              _notesController.text = parsed['description'];
-            }
-          });
-
-          // Show success feedback
-          await voiceService.speak(_getVoiceText('detected'));
-        }
-      },
-      onError: (error) {
-        setState(() {
-          _isListening = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(error),
-            backgroundColor: Colors.red,
-          ),
-        );
-      },
+    // Show new voice input dialog
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => VoiceInputDialogV2(
+        initialLanguage: widget.selectedLanguage,
+        onComplete: (success) {
+          if (success) {
+            // Transaction was created, go back
+            Navigator.of(context).pop(true);
+          }
+        },
+      ),
     );
+
+    setState(() {
+      _isListening = false;
+    });
+
+    // If transaction was created, close this screen
+    if (result == true && mounted) {
+      Navigator.of(context).pop(true);
+    }
   }
 
   Future<void> _selectDate() async {
@@ -426,6 +397,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       });
 
       if (result['success']) {
+        // Check for budget alerts and savings goal progress
+        NotificationService.checkAllProgress();
+        
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -474,6 +448,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         'health': 'स्वास्थ्य',
         'entertainment': 'मनोरंजन',
         'education': 'शिक्षा',
+        'savings': 'बचत',
         'misc': 'अन्य',
         'date': 'दिनांक',
         'notes': 'नोट्स',
@@ -492,6 +467,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         'health': 'आरोग्य',
         'entertainment': 'मनोरंजन',
         'education': 'शिक्षण',
+        'savings': 'बचत',
         'misc': 'इतर',
         'date': 'दिनांक',
         'notes': 'नोट्स',
@@ -510,6 +486,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         'health': 'Health',
         'entertainment': 'Entertainment',
         'education': 'Education',
+        'savings': 'Savings',
         'misc': 'Misc',
         'date': 'Date',
         'notes': 'Notes',

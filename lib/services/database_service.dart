@@ -64,6 +64,7 @@ class DatabaseService {
         monthlyIncome REAL,
         incomeDay INTEGER,
         monthlyIncomeGoal REAL,
+        savingsGoal REAL,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
       )
@@ -449,6 +450,25 @@ class DatabaseService {
     }
   }
 
+  // Update user savings goal
+  static Future<bool> updateUserSavingsGoal(String userId, double goal) async {
+    try {
+      final db = await database;
+      final now = DateTime.now().toIso8601String();
+
+      await db.update(
+        _usersTable,
+        {'savingsGoal': goal, 'updatedAt': now},
+        where: 'id = ?',
+        whereArgs: [int.parse(userId)],
+      );
+
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // EXPENSE METHODS
 
   // Add expense
@@ -770,10 +790,12 @@ class DatabaseService {
       final db = await database;
       final startOfMonth = DateTime(month.year, month.month, 1);
       final endOfMonth = DateTime(month.year, month.month + 1, 0, 23, 59, 59);
+      final today = DateTime.now();
+      final currentDay = today.day;
 
-      // Get income entries for the month
+      // Get NON-RECURRING income entries for the month
       final incomeResult = await db.rawQuery(
-        'SELECT SUM(amount) as total FROM $_incomeTable WHERE userId = ? AND date BETWEEN ? AND ?',
+        'SELECT SUM(amount) as total FROM $_incomeTable WHERE userId = ? AND date BETWEEN ? AND ? AND (isRecurring = 0 OR isRecurring IS NULL)',
         [userId, startOfMonth.toIso8601String(), endOfMonth.toIso8601String()],
       );
 
@@ -782,7 +804,43 @@ class DatabaseService {
         monthlyIncomeFromEntries = (incomeResult.first['total'] as num).toDouble();
       }
 
-      // Get user's set monthly income
+      // Get RECURRING income entries - only if their recurring day has arrived
+      final recurringIncomeResult = await db.query(
+        _incomeTable,
+        where: 'userId = ? AND isRecurring = 1 AND frequency = ?',
+        whereArgs: [userId, 'monthly'],
+      );
+
+      double recurringIncome = 0.0;
+      for (var incomeMap in recurringIncomeResult) {
+        final recurringDay = incomeMap['recurringDay'] as int?;
+        if (recurringDay != null) {
+          // Only add recurring income if:
+          // 1. We're in the current month AND today's date >= recurring day
+          // 2. OR we're viewing a past month (always include it)
+          final isCurrentMonth = month.year == today.year && month.month == today.month;
+          final isFutureMonth = month.isAfter(DateTime(today.year, today.month));
+          
+          if (isFutureMonth) {
+            // Don't include recurring income for future months
+            continue;
+          } else if (isCurrentMonth) {
+            // Current month: only include if today >= recurring day
+            // Handle edge case: if recurring day is 31 but month has fewer days
+            final maxDayInMonth = DateTime(month.year, month.month + 1, 0).day;
+            final effectiveRecurringDay = recurringDay > maxDayInMonth ? maxDayInMonth : recurringDay;
+            
+            if (currentDay >= effectiveRecurringDay) {
+              recurringIncome += (incomeMap['amount'] as num).toDouble();
+            }
+          } else {
+            // Past month: always include
+            recurringIncome += (incomeMap['amount'] as num).toDouble();
+          }
+        }
+      }
+
+      // Get user's set monthly income (legacy field - treat as recurring on day 1)
       final userResult = await db.query(
         _usersTable,
         columns: ['monthlyIncome'],
@@ -792,7 +850,13 @@ class DatabaseService {
 
       double userMonthlyIncome = 0.0;
       if (userResult.isNotEmpty && userResult.first['monthlyIncome'] != null) {
-        userMonthlyIncome = (userResult.first['monthlyIncome'] as num).toDouble();
+        final isCurrentMonth = month.year == today.year && month.month == today.month;
+        final isFutureMonth = month.isAfter(DateTime(today.year, today.month));
+        
+        if (!isFutureMonth && (!isCurrentMonth || currentDay >= 1)) {
+          // Include if not future month and (past month or current month with day >= 1)
+          userMonthlyIncome = (userResult.first['monthlyIncome'] as num).toDouble();
+        }
       }
 
       // Get debt repayments received (money lent that was paid back)
@@ -807,8 +871,8 @@ class DatabaseService {
         debtRepaymentsReceived = (debtsResult.first['total'] as num).toDouble();
       }
 
-      // Return the sum of all three
-      return monthlyIncomeFromEntries + userMonthlyIncome + debtRepaymentsReceived;
+      // Return the sum of all income sources
+      return monthlyIncomeFromEntries + recurringIncome + userMonthlyIncome + debtRepaymentsReceived;
     } catch (e) {
       print('Error getting monthly income: $e');
       return 0.0;

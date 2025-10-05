@@ -7,11 +7,12 @@ import 'chatbot_screen.dart';
 import 'debt_management_screen.dart';
 import '../services/auth_service.dart';
 import '../services/database_service.dart';
+import '../services/notification_service.dart';
 import '../services/voice_permission_manager.dart';
 import '../models/user.dart';
 import '../models/expense.dart';
 import '../models/debt.dart';
-import '../widgets/voice_input_dialog.dart';
+import '../widgets/voice_input_dialog_v2.dart';
 
 class HomeScreen extends StatefulWidget {
   final String selectedLanguage;
@@ -58,6 +59,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
 
     _loadFinancialData();
+    
+    // Schedule all notifications
+    NotificationService.scheduleAllNotifications();
+    
+    // Schedule all notifications
+    NotificationService.scheduleAllNotifications();
   }
 
   @override
@@ -163,6 +170,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ],
         ),
         actions: [
+          IconButton(
+            onPressed: _openVoiceInput,
+            icon: const Icon(Icons.mic, color: Color(0xFF46EC13), size: 22),
+          ),
           IconButton(
             onPressed: () {
               Navigator.push(
@@ -271,36 +282,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openVoiceInput,
-        backgroundColor: const Color(0xFF46EC13),
-        elevation: 6,
-        child: const Icon(
-          Icons.mic,
-          color: Colors.white,
-          size: 28,
-        ),
-      ),
     );
   }
 
   Future<void> _openVoiceInput() async {
-    // Check and request permissions
-    bool hasPermission = await VoicePermissionManager.checkAndRequestPermission(
-      context,
-      widget.selectedLanguage,
-    );
-
-    if (!hasPermission) {
-      return;
-    }
-
-    // Show voice input dialog
+    // Show new voice input dialog with Vosk + Whisper
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => VoiceInputDialog(
-        language: widget.selectedLanguage,
+      builder: (context) => VoiceInputDialogV2(
+        initialLanguage: widget.selectedLanguage,
+        onComplete: (success) {
+          if (success) {
+            _loadFinancialData();
+          }
+        },
       ),
     );
 
@@ -316,6 +312,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             backgroundColor: const Color(0xFF46EC13),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         );
       }
@@ -668,8 +667,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-
-
   Widget _buildActionButton({
     required String title,
     required IconData icon,
@@ -722,6 +719,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'debtStatus': 'कर्ज स्थिति',
         'youOwe': 'आप पर कर्ज',
         'youAreOwed': 'आपको मिलना है',
+        'manageDebts': 'कर्ज प्रबंधन',
         'quickActions': 'त्वरित क्रियाएं',
         'addIncome': 'आय जोड़ें',
         'addExpense': 'व्यय जोड़ें',

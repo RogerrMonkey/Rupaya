@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../models/income.dart';
+import '../models/expense.dart';
 import '../models/user.dart';
 import '../services/database_service.dart';
 import '../services/auth_service.dart';
@@ -21,6 +22,8 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
   Map<String, double> _incomeBySource = {};
   double _totalIncome = 0.0;
   double _monthlyGoal = 0.0;
+  double _currentSavings = 0.0;
+  double _savingsTarget = 0.0;
   bool _isLoading = true;
   
   late stt.SpeechToText _speech;
@@ -62,11 +65,18 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
         _incomeBySource[income.source] = (_incomeBySource[income.source] ?? 0.0) + income.amount;
       }
 
-      // Get user's monthly goal
+      // Get user's monthly goal and savings goal
       final userResult = await DatabaseService.getUserById(_currentUser!.id!);
       if (userResult != null) {
         _monthlyGoal = userResult.monthlyIncomeGoal ?? 0.0;
+        _savingsTarget = userResult.savingsGoal ?? (_monthlyGoal > 0 ? _monthlyGoal * 0.3 : 10000.0);
       }
+      
+      // Load savings data
+      final allExpenses = await DatabaseService.getExpensesForUser(_currentUser!.id!);
+      _currentSavings = allExpenses
+          .where((e) => e.category == 'savings')
+          .fold(0.0, (sum, e) => sum + e.amount);
 
       setState(() {
         _isLoading = false;
@@ -222,11 +232,66 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
     );
   }
 
+  Future<void> _showSetSavingsGoalDialog() async {
+    final goalController = TextEditingController(
+      text: _savingsTarget > 0 ? _savingsTarget.toStringAsFixed(0) : '',
+    );
+    
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(_getText('setSavingsGoal')),
+        content: TextField(
+          controller: goalController,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: _getText('savingsGoalLabel'),
+            prefixText: '₹ ',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_getText('cancel')),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final goal = double.tryParse(goalController.text.trim());
+              if (goal != null && _currentUser != null) {
+                await DatabaseService.updateUserSavingsGoal(_currentUser!.id!, goal);
+                Navigator.pop(context);
+                if (mounted) {
+                  _loadIncomeData();
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(_getText('savingsGoalUpdated')),
+                      backgroundColor: const Color(0xFFE91E63),
+                    ),
+                  );
+                }
+              }
+            },
+            child: Text(_getText('save')),
+          ),
+        ],
+      ),
+    );
+  }
+
   Map<String, Map<String, String>> get _texts => {
     'hi': {
       'title': 'आय प्रबंधन',
       'totalIncome': 'कुल आय',
       'incomeGoal': 'आय लक्ष्य',
+      'savingsGoal': 'बचत लक्ष्य',
+      'setSavingsGoal': 'बचत लक्ष्य सेट करें',
+      'savingsGoalLabel': 'बचत लक्ष्य राशि',
+      'savingsGoalUpdated': 'बचत लक्ष्य अपडेट हो गया!',
+      'saved': 'बचत',
+      'target': 'लक्ष्य',
+      'savingsTip': 'मासिक आय का 30% बचत करें',
       'incomeBreakdown': 'स्रोत के अनुसार आय',
       'voiceInput': 'बोलकर जोड़ें',
       'setGoal': 'लक्ष्य निर्धारित करें',
@@ -247,6 +312,13 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
       'title': 'उत्पन्न व्यवस्थापन',
       'totalIncome': 'एकूण उत्पन्न',
       'incomeGoal': 'उत्पन्न लक्ष्य',
+      'savingsGoal': 'बचत लक्ष्य',
+      'setSavingsGoal': 'बचत लक्ष्य सेट करा',
+      'savingsGoalLabel': 'बचत लक्ष्य रक्कम',
+      'savingsGoalUpdated': 'बचत लक्ष्य अपडेट झाले!',
+      'saved': 'बचत',
+      'target': 'लक्ष्य',
+      'savingsTip': 'मासिक उत्पन्नाच्या 30% बचत करा',
       'incomeBreakdown': 'स्रोतानुसार उत्पन्न',
       'voiceInput': 'बोलून जोडा',
       'setGoal': 'लक्ष्य सेट करा',
@@ -267,6 +339,13 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
       'title': 'Income Management',
       'totalIncome': 'Total Income',
       'incomeGoal': 'Income Goal',
+      'savingsGoal': 'Savings Goal',
+      'setSavingsGoal': 'Set Savings Goal',
+      'savingsGoalLabel': 'Savings Goal Amount',
+      'savingsGoalUpdated': 'Savings goal updated!',
+      'saved': 'saved',
+      'target': 'target',
+      'savingsTip': 'Save 30% of monthly income for financial security',
       'incomeBreakdown': 'Income by Source',
       'voiceInput': 'Voice Add',
       'setGoal': 'Set Goal',
@@ -305,6 +384,10 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
           IconButton(
             icon: const Icon(Icons.flag, color: Color(0xFF46EC13)),
             onPressed: _showSetGoalDialog,
+          ),
+          IconButton(
+            icon: const Icon(Icons.savings, color: Color(0xFFE91E63)),
+            onPressed: _showSetSavingsGoalDialog,
           ),
         ],
       ),
@@ -433,6 +516,125 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
             style: const TextStyle(
               fontSize: 14,
               color: Colors.grey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSavingsGoalCard() {
+    final savingsProgress = _savingsTarget > 0 ? (_currentSavings / _savingsTarget).clamp(0.0, 1.0) : 0.0;
+    
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFE91E63), Color(0xFFC2185B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFE91E63).withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.savings,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _getText('savingsGoal'),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              Text(
+                '${(savingsProgress * 100).toStringAsFixed(0)}%',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          LinearProgressIndicator(
+            value: savingsProgress,
+            backgroundColor: Colors.white.withOpacity(0.3),
+            valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+            minHeight: 12,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '₹${_currentSavings.toStringAsFixed(0)} ${_getText('saved')}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                '₹${_savingsTarget.toStringAsFixed(0)} ${_getText('target')}',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withOpacity(0.8),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.lightbulb_outline,
+                  color: Colors.white.withOpacity(0.9),
+                  size: 16,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _getText('savingsTip'),
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

@@ -4,7 +4,7 @@ plugins {
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
     // Add the Google services Gradle plugin
-    id("com.google.gms.google-services")
+    // id("com.google.gms.google-services")  // Commented out - no Firebase config present
 }
 
 android {

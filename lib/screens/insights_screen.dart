@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../services/database_service.dart';
 import '../services/auth_service.dart';
+import '../services/insights_service.dart';
+import '../services/ai_insights_service.dart';
 import '../models/expense.dart';
+import '../models/income.dart';
 import '../models/debt.dart';
 
 class InsightsScreen extends StatefulWidget {
@@ -19,10 +22,19 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
   // Real data from database
   Map<String, double> weeklyExpenses = {};
   Map<String, double> categoryExpenses = {};
-  List<Expense> recentExpenses = [];
+  List<Expense> currentMonthExpenses = [];
+  List<Expense> lastMonthExpenses = [];
+  List<Income> currentMonthIncomes = [];
+  List<Debt> debts = [];
+  
+  // Analytics data
   double monthlyTotal = 0.0;
   double dailyAverage = 0.0;
+  List<Map<String, String>> localInsights = [];
+  List<Map<String, String>> aiInsights = [];
   bool isLoading = true;
+  bool isLoadingAI = false;
+  String? aiError;
 
   @override
   void initState() {
@@ -40,63 +52,124 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
 
   Future<void> _loadInsightsData() async {
     final currentUser = AuthService.currentUser;
-    if (currentUser == null) return;
+    if (currentUser == null || currentUser.id == null) {
+      setState(() {
+        isLoading = false;
+      });
+      return;
+    }
 
     setState(() {
       isLoading = true;
     });
 
     try {
-      // Get current month expenses
       final now = DateTime.now();
-      final monthStart = DateTime(now.year, now.month, 1);
-      final monthEnd = DateTime(now.year, now.month + 1, 0);
+      final userId = currentUser.id!;
 
-      // Load expenses for current month
-      recentExpenses = await DatabaseService.getExpensesForUser(currentUser.id!);
-      
-      // Filter for current month
-      final monthlyExpenses = recentExpenses.where((expense) {
-        return expense.date.isAfter(monthStart.subtract(const Duration(days: 1))) &&
-               expense.date.isBefore(monthEnd.add(const Duration(days: 1)));
-      }).toList();
+      // Load all expenses, incomes, and debts
+      final allExpenses = await DatabaseService.getExpensesForUser(userId);
+      final allIncomes = await DatabaseService.getIncomeForUser(userId);
+      debts = await DatabaseService.getDebtsForUser(userId);
 
-      // Calculate monthly total
-      monthlyTotal = monthlyExpenses.fold(0.0, (sum, expense) => sum + expense.amount);
-      
-      // Calculate daily average
-      final daysInMonth = monthEnd.day;
-      dailyAverage = monthlyTotal / daysInMonth;
+      // Filter current month expenses
+      final currentMonthStart = DateTime(now.year, now.month, 1);
+      final currentMonthEnd = DateTime(now.year, now.month + 1, 0);
+      currentMonthExpenses = allExpenses.where((e) =>
+        e.date.isAfter(currentMonthStart.subtract(const Duration(days: 1))) &&
+        e.date.isBefore(currentMonthEnd.add(const Duration(days: 1)))
+      ).toList();
 
-      // Calculate category expenses
-      categoryExpenses.clear();
-      for (final expense in monthlyExpenses) {
-        categoryExpenses[expense.category] = 
-            (categoryExpenses[expense.category] ?? 0.0) + expense.amount;
+      // Filter last month expenses
+      final lastMonthStart = DateTime(now.year, now.month - 1, 1);
+      final lastMonthEnd = DateTime(now.year, now.month, 0);
+      lastMonthExpenses = allExpenses.where((e) =>
+        e.date.isAfter(lastMonthStart.subtract(const Duration(days: 1))) &&
+        e.date.isBefore(lastMonthEnd.add(const Duration(days: 1)))
+      ).toList();
+
+      // Filter current month incomes
+      currentMonthIncomes = allIncomes.where((i) =>
+        i.date.isAfter(currentMonthStart.subtract(const Duration(days: 1))) &&
+        i.date.isBefore(currentMonthEnd.add(const Duration(days: 1)))
+      ).toList();
+
+      // Use InsightsService for calculations
+      monthlyTotal = InsightsService.calculateMonthlyTotal(currentMonthExpenses);
+      dailyAverage = InsightsService.calculateDailyAverage(currentMonthExpenses);
+      categoryExpenses = InsightsService.getCategoryBreakdown(currentMonthExpenses);
+      weeklyExpenses = InsightsService.getWeeklyBreakdown(currentMonthExpenses);
+
+      // Generate local insights
+      localInsights = InsightsService.generateLocalInsights(
+        currentMonthExpenses,
+        currentMonthIncomes,
+        debts,
+      );
+
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
       }
 
-      // Calculate weekly expenses (last 7 days)
-      weeklyExpenses.clear();
-      final weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      for (int i = 6; i >= 0; i--) {
-        final date = now.subtract(Duration(days: i));
-        final dayName = weekDays[date.weekday - 1];
-        final dayExpenses = monthlyExpenses.where((expense) {
-          return expense.date.year == date.year &&
-                 expense.date.month == date.month &&
-                 expense.date.day == date.day;
-        }).fold(0.0, (sum, expense) => sum + expense.amount);
-        weeklyExpenses[dayName] = dayExpenses;
-      }
+      // Load AI insights in background (don't block UI)
+      _loadAIInsights();
 
-      setState(() {
-        isLoading = false;
-      });
     } catch (e) {
-      print('Error loading insights data: $e');
+      debugPrint('Error loading insights data: $e');
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadAIInsights() async {
+    if (currentMonthExpenses.isEmpty) return;
+
+    if (mounted) {
       setState(() {
-        isLoading = false;
+        isLoadingAI = true;
+        aiError = null;
       });
+    }
+
+    try {
+      final result = await AIInsightsService.generateAIInsights(
+        expenses: currentMonthExpenses,
+        incomes: currentMonthIncomes,
+        categoryBreakdown: categoryExpenses,
+        monthlyTotal: monthlyTotal,
+        dailyAverage: dailyAverage,
+      );
+
+      if (result['success']) {
+        if (mounted) {
+          setState(() {
+            aiInsights = List<Map<String, String>>.from(
+              result['insights'].map((i) => Map<String, String>.from(i))
+            );
+            isLoadingAI = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            aiError = result['error'];
+            isLoadingAI = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading AI insights: $e');
+      if (mounted) {
+        setState(() {
+          aiError = e.toString();
+          isLoadingAI = false;
+        });
+      }
     }
   }
 
@@ -116,6 +189,15 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
             fontWeight: FontWeight.bold,
           ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Color(0xFF46EC13)),
+            onPressed: () {
+              _loadInsightsData();
+            },
+            tooltip: 'Refresh',
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           labelColor: const Color(0xFF46EC13),
@@ -208,14 +290,26 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
 
           const SizedBox(height: 16),
 
-          ...categoryExpenses.entries.map((entry) {
-            final percentage = (entry.value / 18500) * 100;
-            return _buildCategoryCard(entry.key, entry.value, percentage);
-          }).toList(),
+          if (categoryExpenses.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Text(
+                  _getText('noExpenses'),
+                  style: const TextStyle(color: Colors.grey, fontSize: 16),
+                ),
+              ),
+            )
+          else
+            ...categoryExpenses.entries.map((entry) {
+              // Calculate percentage based on monthly total, avoid division by zero
+              final percentage = monthlyTotal > 0 ? (entry.value / monthlyTotal) * 100 : 0.0;
+              return _buildCategoryCard(entry.key, entry.value, percentage);
+            }).toList(),
 
           const SizedBox(height: 24),
 
-          // AI Insights
+          // Insights Section
           Text(
             _getText('aiInsights'),
             style: const TextStyle(
@@ -227,30 +321,81 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
 
           const SizedBox(height: 16),
 
-          _buildInsightCard(
-            icon: Icons.trending_up,
-            title: _getText('spendingUp'),
-            description: _getText('spendingUpDesc'),
-            color: const Color(0xFFFF5722),
-          ),
+          // Local Insights (Always Available)
+          ...localInsights.map((insight) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _buildInsightCard(
+              icon: _getIconForType(insight['icon'] ?? 'info'),
+              title: insight['title'] ?? '',
+              description: insight['description'] ?? '',
+              color: _getColorForType(insight['type'] ?? 'info'),
+            ),
+          )).toList(),
 
-          const SizedBox(height: 12),
+          // AI Insights (Optional, when available)
+          if (isLoadingAI)
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF46EC13).withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF46EC13)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'AI is analyzing your spending...',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
 
-          _buildInsightCard(
-            icon: Icons.lightbulb_outline,
-            title: _getText('savingTip'),
-            description: _getText('savingTipDesc'),
-            color: const Color(0xFF46EC13),
-          ),
+          if (aiInsights.isNotEmpty && !isLoadingAI)
+            ...aiInsights.map((insight) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _buildInsightCard(
+                icon: _getIconForType(insight['icon'] ?? 'psychology'),
+                title: '🤖 ${insight['title'] ?? ''}',
+                description: insight['description'] ?? '',
+                color: const Color(0xFF9C27B0), // Purple for AI
+                isAI: true,
+              ),
+            )).toList(),
 
-          const SizedBox(height: 12),
-
-          _buildInsightCard(
-            icon: Icons.warning_outlined,
-            title: _getText('debtAlert'),
-            description: _getText('debtAlertDesc'),
-            color: const Color(0xFFF44336),
-          ),
+          if (aiError != null && !isLoadingAI)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.cloud_off, color: Colors.orange.shade700, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'AI insights unavailable (offline mode)',
+                      style: TextStyle(
+                        color: Colors.orange.shade900,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -295,52 +440,65 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
                 ),
               ],
             ),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: weeklyExpenses.keys.map((day) {
-                    return Text(
-                      day.substring(0, 1),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    );
-                  }).toList(),
+            child: weeklyExpenses.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(20.0),
+                    child: Text(
+                      'No spending data for this week',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                )
+              : Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: weeklyExpenses.keys.map((day) {
+                        return Text(
+                          day.substring(0, 1),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: weeklyExpenses.values.map((amount) {
+                        // Find max value for normalization, avoid division by zero
+                        final maxAmount = weeklyExpenses.values.reduce((a, b) => a > b ? a : b);
+                        final normalizedMax = maxAmount > 0 ? maxAmount : 1.0;
+                        final height = (amount / normalizedMax) * 120;
+                        return Container(
+                          width: 24,
+                          height: height > 0 ? height : 2, // Minimum height of 2
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF46EC13),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: weeklyExpenses.values.map((amount) {
+                        return Text(
+                          '₹${amount.toInt()}',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: weeklyExpenses.values.map((amount) {
-                    final height = (amount / 1200) * 120; // Normalize to max height
-                    return Container(
-                      width: 24,
-                      height: height,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF46EC13),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: weeklyExpenses.values.map((amount) {
-                    return Text(
-                      '₹${amount.toInt()}',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey,
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
           ),
 
           const SizedBox(height: 24),
@@ -357,21 +515,44 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
 
           const SizedBox(height: 16),
 
-          _buildGoalCard(
-            title: _getText('emergencyFund'),
-            current: 15000,
-            target: 50000,
-            color: const Color(0xFF4CAF50),
-          ),
+          // Dynamic savings goals based on actual data
+          if (currentMonthIncomes.isNotEmpty) ...[
+            () {
+              final ratio = InsightsService.getIncomeExpenseRatio(
+                currentMonthIncomes,
+                currentMonthExpenses,
+              );
+              final savings = (ratio['savings'] as num?)?.toDouble() ?? 0.0;
+              final totalIncome = (ratio['totalIncome'] as num?)?.toDouble() ?? 0.0;
+              
+              return _buildGoalCard(
+                title: 'Monthly Savings',
+                current: savings.clamp(0.0, double.infinity),
+                target: totalIncome > 0 ? totalIncome : 1.0, // Avoid division by zero
+                color: const Color(0xFF4CAF50),
+              );
+            }(),
+            const SizedBox(height: 12),
+          ],
 
-          const SizedBox(height: 12),
-
-          _buildGoalCard(
-            title: _getText('debtRepayment'),
-            current: 2000,
-            target: 5000,
-            color: const Color(0xFFF44336),
-          ),
+          // Debt repayment progress
+          if (debts.isNotEmpty) ...[
+            () {
+              final debtSummary = InsightsService.getDebtSummary(debts);
+              final totalDebt = (debtSummary['totalOwed'] as num?)?.toDouble() ?? 0.0;
+              final paidAmount = debts
+                  .where((d) => d.direction == 'owe')
+                  .fold(0.0, (sum, d) => sum + d.paidAmount);
+              
+              return _buildGoalCard(
+                title: _getText('debtRepayment'),
+                current: paidAmount,
+                target: totalDebt + paidAmount > 0 ? totalDebt + paidAmount : 1.0,
+                color: const Color(0xFFF44336),
+              );
+            }(),
+            const SizedBox(height: 12),
+          ],
 
           const SizedBox(height: 24),
 
@@ -402,14 +583,113 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
             ),
             child: Column(
               children: [
-                _buildComparisonRow(_getText('thisMonth'), monthlyTotal, const Color(0xFF46EC13)),
+                _buildComparisonRow(
+                  _getText('thisMonth'),
+                  monthlyTotal,
+                  const Color(0xFF46EC13),
+                ),
                 const SizedBox(height: 12),
-                _buildComparisonRow(_getText('lastMonth'), 0.0, Colors.grey), // TODO: Calculate last month
+                _buildComparisonRow(
+                  _getText('lastMonth'),
+                  InsightsService.calculateMonthlyTotal(lastMonthExpenses),
+                  Colors.grey,
+                ),
                 const SizedBox(height: 12),
-                _buildComparisonRow(_getText('average'), dailyAverage, const Color(0xFF2196F3)),
+                _buildComparisonRow(
+                  _getText('average'),
+                  dailyAverage * DateTime.now().day,
+                  const Color(0xFF2196F3),
+                ),
               ],
             ),
           ),
+
+          // Add spending velocity insight
+          const SizedBox(height: 24),
+          
+          () {
+            final velocity = InsightsService.getSpendingVelocity(currentMonthExpenses);
+            return Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF46EC13).withOpacity(0.1),
+                    const Color(0xFF2E7D32).withOpacity(0.1),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF46EC13).withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Spending Velocity',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Daily Rate',
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                          Text(
+                            '₹${((velocity['dailyRate'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF46EC13),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text(
+                            'Projected Monthly',
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                          Text(
+                            '₹${((velocity['projectedMonthly'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: () {
+                      final elapsed = (velocity['daysElapsed'] as num?)?.toDouble() ?? 0.0;
+                      final remaining = (velocity['daysRemaining'] as num?)?.toDouble() ?? 1.0;
+                      final total = elapsed + remaining;
+                      return total > 0 ? elapsed / total : 0.0;
+                    }(),
+                    backgroundColor: Colors.grey.withOpacity(0.2),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF46EC13)),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${(velocity['daysRemaining'] as num?)?.toInt() ?? 0} days remaining in month',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+            );
+          }(),
         ],
       ),
     );
@@ -498,6 +778,7 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
     required String title,
     required String description,
     required Color color,
+    bool isAI = false,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -505,6 +786,13 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.3)),
+        boxShadow: isAI ? [
+          BoxShadow(
+            color: color.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ] : null,
       ),
       child: Row(
         children: [
@@ -635,12 +923,47 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
     final categoryMap = {
       'food': {'icon': Icons.restaurant, 'color': const Color(0xFFFF5722)},
       'travel': {'icon': Icons.directions_bus, 'color': const Color(0xFF2196F3)},
+      'transport': {'icon': Icons.directions_car, 'color': const Color(0xFF2196F3)},
       'bills': {'icon': Icons.receipt, 'color': const Color(0xFFF44336)},
       'shopping': {'icon': Icons.shopping_bag, 'color': const Color(0xFF9C27B0)},
       'health': {'icon': Icons.local_hospital, 'color': const Color(0xFF4CAF50)},
+      'entertainment': {'icon': Icons.movie, 'color': const Color(0xFFFF9800)},
+      'education': {'icon': Icons.school, 'color': const Color(0xFF3F51B5)},
+      'personal': {'icon': Icons.person, 'color': const Color(0xFF607D8B)},
     };
 
-    return categoryMap[category] ?? {'icon': Icons.category, 'color': Colors.grey};
+    return categoryMap[category.toLowerCase()] ?? {'icon': Icons.category, 'color': Colors.grey};
+  }
+
+  IconData _getIconForType(String iconName) {
+    final iconMap = {
+      'trending_up': Icons.trending_up,
+      'trending_down': Icons.trending_down,
+      'category': Icons.category,
+      'calendar_today': Icons.calendar_today,
+      'account_balance_wallet': Icons.account_balance_wallet,
+      'savings': Icons.savings,
+      'warning': Icons.warning,
+      'info': Icons.info,
+      'lightbulb': Icons.lightbulb_outline,
+      'check_circle': Icons.check_circle,
+      'psychology': Icons.psychology,
+      'error': Icons.error,
+    };
+
+    return iconMap[iconName] ?? Icons.info;
+  }
+
+  Color _getColorForType(String type) {
+    final colorMap = {
+      'warning': const Color(0xFFFF5722),
+      'success': const Color(0xFF4CAF50),
+      'tip': const Color(0xFF46EC13),
+      'info': const Color(0xFF2196F3),
+      'error': const Color(0xFFF44336),
+    };
+
+    return colorMap[type] ?? const Color(0xFF2196F3);
   }
 
   String _getText(String key) {
@@ -725,10 +1048,11 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
         'monthlyComparison': 'Monthly Comparison',
         'lastMonth': 'Last Month',
         'average': 'Average',
+        'noExpenses': 'No expenses this month',
       },
     };
 
-    return texts[widget.selectedLanguage]?[key] ?? texts['en']![key]!;
+    return texts[widget.selectedLanguage]?[key] ?? texts['en']?[key] ?? key;
   }
 
   @override
