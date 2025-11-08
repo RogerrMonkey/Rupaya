@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'language_selection_screen.dart';
+import 'login_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -52,7 +52,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: Align(
                 alignment: Alignment.topRight,
                 child: TextButton(
-                  onPressed: () => _navigateToLanguageSelection(),
+                  onPressed: () => _navigateToLogin(),
                   child: const Text(
                     'Skip',
                     style: TextStyle(
@@ -147,7 +147,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             curve: Curves.easeInOut,
                           );
                         } else {
-                          _navigateToLanguageSelection();
+                          _navigateToLogin();
                         }
                       },
                       style: ElevatedButton.styleFrom(
@@ -232,11 +232,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  void _navigateToLanguageSelection() {
+  void _navigateToLogin() {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) => const LanguageSelectionScreen(),
+        builder: (context) => const LoginScreen(),
       ),
     );
   }

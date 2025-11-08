@@ -50,21 +50,15 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       bool isLoggedIn = await AuthService.loadSavedLoginState();
 
       if (isLoggedIn) {
-        // Get saved language preference
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        String selectedLanguage = prefs.getString('selectedLanguage') ?? 'en';
-
         // Navigate to main app
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => MainNavigationScreen(
-              selectedLanguage: selectedLanguage,
-            ),
+            builder: (context) => const MainNavigationScreen(),
           ),
         );
       } else {
-        // Navigate to onboarding/language selection
+        // Navigate to onboarding
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const OnboardingScreen()),

@@ -3,16 +3,13 @@ import 'add_expense_screen.dart';
 import 'add_debt_screen.dart';
 import 'add_income_screen.dart';
 import 'income_management_screen.dart';
-import 'chatbot_screen.dart';
 import 'debt_management_screen.dart';
 import '../services/auth_service.dart';
 import '../services/database_service.dart';
 import '../services/notification_service.dart';
-import '../services/voice_permission_manager.dart';
 import '../models/user.dart';
 import '../models/expense.dart';
 import '../models/debt.dart';
-import '../widgets/voice_input_dialog_v2.dart';
 
 class HomeScreen extends StatefulWidget {
   final String selectedLanguage;
@@ -169,23 +166,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            onPressed: _openVoiceInput,
-            icon: const Icon(Icons.mic, color: Color(0xFF46EC13), size: 22),
-          ),
-          IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChatbotScreen(selectedLanguage: widget.selectedLanguage),
-                ),
-              );
-            },
-            icon: const Icon(Icons.chat_bubble_outline, color: Color(0xFF46EC13), size: 22),
-          ),
-        ],
       ),
       body: _isLoading 
         ? const Center(
@@ -283,42 +263,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
     );
-  }
-
-  Future<void> _openVoiceInput() async {
-    // Show new voice input dialog with Vosk + Whisper
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => VoiceInputDialogV2(
-        initialLanguage: widget.selectedLanguage,
-        onComplete: (success) {
-          if (success) {
-            _loadFinancialData();
-          }
-        },
-      ),
-    );
-
-    // Refresh data if transaction was added
-    if (result == true) {
-      _loadFinancialData();
-      
-      // Show success snackbar
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_getText('transactionAdded')),
-            backgroundColor: const Color(0xFF46EC13),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
-      }
-    }
   }
 
   Widget _buildTotalMoneyCard() {

@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter/services.dart';
 import 'screens/splash_screen.dart';
 import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Load environment variables
-  await dotenv.load(fileName: ".env");
+  // Set preferred orientations (portrait only for better UX)
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+  
+  // Enable smooth animations
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   
   // Initialize notification service
   await NotificationService.initialize();
@@ -23,6 +29,10 @@ class RupayaApp extends StatelessWidget {
     return MaterialApp(
       title: 'Rupaya',
       debugShowCheckedModeBanner: false,
+      // Enable smooth scrolling physics
+      scrollBehavior: const MaterialScrollBehavior().copyWith(
+        scrollbars: false,
+      ),
       theme: ThemeData(
         primaryColor: const Color(0xFF46EC13),
         colorScheme: ColorScheme.fromSeed(
@@ -31,6 +41,15 @@ class RupayaApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: const Color(0xFFF6F8F6),
         fontFamily: 'Roboto',
+        // Smooth animations
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
+        // Reduce overdraw
+        useMaterial3: true,
         textTheme: const TextTheme(
           displayLarge: TextStyle(
             fontSize: 36,
@@ -56,7 +75,6 @@ class RupayaApp extends StatelessWidget {
             ),
           ),
         ),
-        useMaterial3: true,
       ),
       home: const SplashScreen(),
     );

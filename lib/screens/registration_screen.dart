@@ -18,7 +18,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _occupationController = TextEditingController();
   final _cityController = TextEditingController();
   final _monthlyIncomeController = TextEditingController();
   String _pin = '';
@@ -27,6 +26,39 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   String _errorMessage = '';
   int _currentStep = 0;
   int? _selectedIncomeDay;
+  String? _selectedOccupation;
+
+  // Common occupations list
+  final List<String> _occupations = [
+    'Shopkeeper',
+    'Driver',
+    'Teacher',
+    'Doctor',
+    'Engineer',
+    'Accountant',
+    'Farmer',
+    'Mechanic',
+    'Electrician',
+    'Plumber',
+    'Carpenter',
+    'Cook/Chef',
+    'Tailor',
+    'Barber',
+    'Construction Worker',
+    'Factory Worker',
+    'Office Worker',
+    'Sales Person',
+    'Security Guard',
+    'Delivery Person',
+    'Waiter/Waitress',
+    'Housekeeper',
+    'Student',
+    'Business Owner',
+    'Freelancer',
+    'Retired',
+    'Unemployed',
+    'Other',
+  ];
 
   // Language-specific text
   Map<String, Map<String, String>> get _texts => {
@@ -238,12 +270,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Occupation field
-          TextFormField(
-            controller: _occupationController,
+          // Occupation dropdown
+          DropdownButtonFormField<String>(
+            value: _selectedOccupation,
             decoration: InputDecoration(
               labelText: _getText('occupation'),
-              hintText: _getText('occupationPlaceholder'),
               prefixIcon: const Icon(Icons.work),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -253,8 +284,19 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 borderSide: const BorderSide(color: Color(0xFF46EC13), width: 2),
               ),
             ),
+            items: _occupations.map((String occupation) {
+              return DropdownMenuItem<String>(
+                value: occupation,
+                child: Text(occupation),
+              );
+            }).toList(),
+            onChanged: (String? newValue) {
+              setState(() {
+                _selectedOccupation = newValue;
+              });
+            },
             validator: (value) {
-              if (value == null || value.trim().isEmpty) {
+              if (value == null || value.isEmpty) {
                 return 'Occupation is required';
               }
               return null;
@@ -558,7 +600,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         name: _nameController.text.trim(),
         phoneNumber: _phoneController.text.trim(),
         pin: _pin,
-        occupation: _occupationController.text.trim(),
+        occupation: _selectedOccupation ?? 'Other',
         city: _cityController.text.trim().isEmpty ? null : _cityController.text.trim(),
         monthlyIncome: monthlyIncomeValue,
         incomeDay: _selectedIncomeDay,
@@ -595,8 +637,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
-    _occupationController.dispose();
     _cityController.dispose();
+    _monthlyIncomeController.dispose();
     super.dispose();
   }
 }

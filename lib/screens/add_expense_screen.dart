@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import '../services/database_service.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
-import '../widgets/voice_input_dialog_v2.dart';
 import '../models/expense.dart';
 
 class AddExpenseScreen extends StatefulWidget {
@@ -21,7 +20,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   String? _selectedCategory;
   DateTime _selectedDate = DateTime.now();
-  bool _isListening = false;
   bool _isLoading = false;
 
   final List<Map<String, dynamic>> _categories = [
@@ -89,14 +87,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: _startVoiceInput,
-                        icon: Icon(
-                          _isListening ? Icons.mic : Icons.mic_none,
-                          color: _isListening ? const Color(0xFF46EC13) : Colors.grey,
                         ),
                       ),
                     ],
@@ -314,36 +304,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
            !_isLoading;
   }
 
-  Future<void> _startVoiceInput() async {
-    setState(() {
-      _isListening = true;
-    });
-
-    // Show new voice input dialog
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => VoiceInputDialogV2(
-        initialLanguage: widget.selectedLanguage,
-        onComplete: (success) {
-          if (success) {
-            // Transaction was created, go back
-            Navigator.of(context).pop(true);
-          }
-        },
-      ),
-    );
-
-    setState(() {
-      _isListening = false;
-    });
-
-    // If transaction was created, close this screen
-    if (result == true && mounted) {
-      Navigator.of(context).pop(true);
-    }
-  }
-
   Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -496,15 +456,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       },
     };
 
-    return texts[widget.selectedLanguage]?[key] ?? texts['en']![key]!;
-  }
-
-  String _getVoiceText(String key) {
-    final texts = {
-      'hi': {'detected': 'व्यय पहचाना गया'},
-      'mr': {'detected': 'खर्च ओळखला'},
-      'en': {'detected': 'Expense detected'},
-    };
     return texts[widget.selectedLanguage]?[key] ?? texts['en']![key]!;
   }
 

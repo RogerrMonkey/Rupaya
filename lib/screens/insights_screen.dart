@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../services/database_service.dart';
 import '../services/auth_service.dart';
 import '../services/insights_service.dart';
-import '../services/ai_insights_service.dart';
 import '../models/expense.dart';
 import '../models/income.dart';
 import '../models/debt.dart';
@@ -31,10 +30,7 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
   double monthlyTotal = 0.0;
   double dailyAverage = 0.0;
   List<Map<String, String>> localInsights = [];
-  List<Map<String, String>> aiInsights = [];
   bool isLoading = true;
-  bool isLoadingAI = false;
-  String? aiError;
 
   @override
   void initState() {
@@ -113,61 +109,11 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
         });
       }
 
-      // Load AI insights in background (don't block UI)
-      _loadAIInsights();
-
     } catch (e) {
       debugPrint('Error loading insights data: $e');
       if (mounted) {
         setState(() {
           isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _loadAIInsights() async {
-    if (currentMonthExpenses.isEmpty) return;
-
-    if (mounted) {
-      setState(() {
-        isLoadingAI = true;
-        aiError = null;
-      });
-    }
-
-    try {
-      final result = await AIInsightsService.generateAIInsights(
-        expenses: currentMonthExpenses,
-        incomes: currentMonthIncomes,
-        categoryBreakdown: categoryExpenses,
-        monthlyTotal: monthlyTotal,
-        dailyAverage: dailyAverage,
-      );
-
-      if (result['success']) {
-        if (mounted) {
-          setState(() {
-            aiInsights = List<Map<String, String>>.from(
-              result['insights'].map((i) => Map<String, String>.from(i))
-            );
-            isLoadingAI = false;
-          });
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            aiError = result['error'];
-            isLoadingAI = false;
-          });
-        }
-      }
-    } catch (e) {
-      debugPrint('Error loading AI insights: $e');
-      if (mounted) {
-        setState(() {
-          aiError = e.toString();
-          isLoadingAI = false;
         });
       }
     }
@@ -331,71 +277,6 @@ class _InsightsScreenState extends State<InsightsScreen> with TickerProviderStat
               color: _getColorForType(insight['type'] ?? 'info'),
             ),
           )).toList(),
-
-          // AI Insights (Optional, when available)
-          if (isLoadingAI)
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF46EC13).withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF46EC13)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'AI is analyzing your spending...',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                ],
-              ),
-            ),
-
-          if (aiInsights.isNotEmpty && !isLoadingAI)
-            ...aiInsights.map((insight) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildInsightCard(
-                icon: _getIconForType(insight['icon'] ?? 'psychology'),
-                title: '🤖 ${insight['title'] ?? ''}',
-                description: insight['description'] ?? '',
-                color: const Color(0xFF9C27B0), // Purple for AI
-                isAI: true,
-              ),
-            )).toList(),
-
-          if (aiError != null && !isLoadingAI)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange.shade200),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.cloud_off, color: Colors.orange.shade700, size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'AI insights unavailable (offline mode)',
-                      style: TextStyle(
-                        color: Colors.orange.shade900,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
         ],
       ),
     );

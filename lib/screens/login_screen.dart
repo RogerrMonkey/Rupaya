@@ -8,7 +8,7 @@ import 'main_navigation_screen.dart';
 class LoginScreen extends StatefulWidget {
   final String selectedLanguage;
 
-  const LoginScreen({super.key, required this.selectedLanguage});
+  const LoginScreen({super.key, this.selectedLanguage = 'en'});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();

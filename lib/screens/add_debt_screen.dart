@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import '../services/database_service.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
-import '../widgets/voice_input_dialog_v2.dart';
 import '../models/debt.dart';
 
 class AddDebtScreen extends StatefulWidget {
@@ -23,7 +22,6 @@ class _AddDebtScreenState extends State<AddDebtScreen> {
   String _debtDirection = 'owe'; // 'owe' or 'owed'
   DateTime _createdDate = DateTime.now();
   DateTime _dueDate = DateTime.now().add(const Duration(days: 30)); // Default 30 days from now
-  bool _isListening = false;
   bool _isLoading = false;
 
   @override
@@ -184,14 +182,6 @@ class _AddDebtScreenState extends State<AddDebtScreen> {
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: _startVoiceInput,
-                        icon: Icon(
-                          _isListening ? Icons.mic : Icons.mic_none,
-                          color: _isListening ? const Color(0xFF46EC13) : Colors.grey,
                         ),
                       ),
                     ],
@@ -446,36 +436,6 @@ class _AddDebtScreenState extends State<AddDebtScreen> {
            !_isLoading;
   }
 
-  Future<void> _startVoiceInput() async {
-    setState(() {
-      _isListening = true;
-    });
-
-    // Show new voice input dialog
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => VoiceInputDialogV2(
-        initialLanguage: widget.selectedLanguage,
-        onComplete: (success) {
-          if (success) {
-            // Transaction was created, go back
-            Navigator.of(context).pop(true);
-          }
-        },
-      ),
-    );
-
-    setState(() {
-      _isListening = false;
-    });
-
-    // If transaction was created, close this screen
-    if (result == true && mounted) {
-      Navigator.of(context).pop(true);
-    }
-  }
-
   Future<void> _selectCreationDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -667,15 +627,6 @@ class _AddDebtScreenState extends State<AddDebtScreen> {
       },
     };
 
-    return texts[widget.selectedLanguage]?[key] ?? texts['en']![key]!;
-  }
-
-  String _getVoiceText(String key) {
-    final texts = {
-      'hi': {'detected': 'कर्ज पहचाना गया'},
-      'mr': {'detected': 'कर्ज ओळखले'},
-      'en': {'detected': 'Debt detected'},
-    };
     return texts[widget.selectedLanguage]?[key] ?? texts['en']![key]!;
   }
 

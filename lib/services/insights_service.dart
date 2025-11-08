@@ -238,7 +238,7 @@ class InsightsService {
     };
   }
 
-  /// Generate rule-based insights (local, no API needed)
+  /// Generate comprehensive rule-based insights (local, no API needed)
   static List<Map<String, String>> generateLocalInsights(
     List<Expense> expenses,
     List<Income> incomes,
@@ -249,14 +249,13 @@ class InsightsService {
     if (expenses.isEmpty) {
       insights.add({
         'type': 'info',
-        'title': 'No Expenses Yet',
-        'description': 'Start tracking your expenses to see insights',
+        'title': 'Start Your Financial Journey',
+        'description': 'Begin tracking expenses to unlock powerful insights about your spending habits',
         'icon': 'info',
       });
       return insights;
     }
 
-    // Monthly comparison insight
     final now = DateTime.now();
     final currentMonthExpenses = expenses.where((e) =>
       e.date.year == now.year && e.date.month == now.month
@@ -267,80 +266,278 @@ class InsightsService {
       e.date.year == lastMonth.year && e.date.month == lastMonth.month
     ).toList();
 
-    if (lastMonthExpenses.isNotEmpty) {
+    final categoryBreakdown = getCategoryBreakdown(currentMonthExpenses);
+    final monthlyTotal = calculateMonthlyTotal(currentMonthExpenses);
+    final dailyAverage = calculateDailyAverage(currentMonthExpenses);
+
+    // 1. MONTHLY COMPARISON WITH DETAILS
+    if (lastMonthExpenses.isNotEmpty && currentMonthExpenses.isNotEmpty) {
       final comparison = getMonthlyComparison(currentMonthExpenses, lastMonthExpenses);
-      final change = comparison['percentageChange'].abs().toStringAsFixed(0);
+      final change = comparison['percentageChange'].abs().toStringAsFixed(1);
+      final diff = comparison['difference'].abs().toStringAsFixed(0);
+      
+      if (comparison['increased']) {
+        insights.add({
+          'type': 'warning',
+          'title': 'Spending Up by ${change}%',
+          'description': '₹$diff more than last month. Review your ${categoryBreakdown.entries.first.key} expenses.',
+          'icon': 'trending_up',
+        });
+      } else {
+        insights.add({
+          'type': 'success',
+          'title': 'Excellent Progress!',
+          'description': 'Saved ₹$diff more than last month (${change}% decrease). Keep it up!',
+          'icon': 'trending_down',
+        });
+      }
+    }
+
+    // 2. TOP CATEGORY DETAILED ANALYSIS
+    if (categoryBreakdown.isNotEmpty) {
+      final topCategory = categoryBreakdown.entries.first;
+      final percentage = (topCategory.value / monthlyTotal * 100).toStringAsFixed(1);
+      final avgPerDay = (topCategory.value / now.day).toStringAsFixed(0);
       
       insights.add({
-        'type': comparison['increased'] ? 'warning' : 'success',
-        'title': comparison['increased'] ? 'Spending Increased' : 'Spending Decreased',
-        'description': '${change}% ${comparison['increased'] ? 'more' : 'less'} than last month',
-        'icon': comparison['increased'] ? 'trending_up' : 'trending_down',
-      });
-    }
-
-    // Top category insight
-    final topCategory = getTopCategory(currentMonthExpenses);
-    if (topCategory != null) {
-      final percentage = getCategoryPercentage(topCategory.key, currentMonthExpenses);
-      insights.add({
-        'type': 'info',
-        'title': 'Biggest Expense: ${topCategory.key}',
-        'description': '₹${topCategory.value.toStringAsFixed(0)} (${percentage.toStringAsFixed(0)}% of total)',
+        'type': percentage.compareTo('40') > 0 ? 'warning' : 'info',
+        'title': '${topCategory.key} Dominates Spending',
+        'description': '${percentage}% of budget (₹${topCategory.value.toStringAsFixed(0)}). Daily avg: ₹$avgPerDay',
         'icon': 'category',
       });
+
+      // Category-specific advice
+      if (topCategory.key.toLowerCase() == 'food' && double.parse(percentage) > 30) {
+        insights.add({
+          'type': 'tip',
+          'title': 'Food Budget Opportunity',
+          'description': 'Consider meal prepping to save 20-30% on food expenses',
+          'icon': 'restaurant',
+        });
+      } else if (topCategory.key.toLowerCase() == 'entertainment' && double.parse(percentage) > 20) {
+        insights.add({
+          'type': 'tip',
+          'title': 'Entertainment Budget Alert',
+          'description': 'Entertainment is ${percentage}% of spending. Set a monthly limit to save more',
+          'icon': 'movie',
+        });
+      } else if (topCategory.key.toLowerCase() == 'transport' && double.parse(percentage) > 25) {
+        insights.add({
+          'type': 'tip',
+          'title': 'Transport Cost Optimization',
+          'description': 'Transport is high at ${percentage}%. Explore carpooling or public transit options',
+          'icon': 'directions_car',
+        });
+      }
     }
 
-    // Weekend spending pattern
+    // 3. SPENDING VELOCITY & PROJECTION
+    final velocity = getSpendingVelocity(currentMonthExpenses);
+    final projected = velocity['projectedMonthly'].toStringAsFixed(0);
+    final daysLeft = velocity['daysRemaining'];
+    
+    if (daysLeft > 0) {
+      final remainingBudget = (velocity['projectedMonthly'] - monthlyTotal).toStringAsFixed(0);
+      insights.add({
+        'type': 'info',
+        'title': 'Monthly Projection: ₹$projected',
+        'description': 'At current rate, you have ₹$remainingBudget for next $daysLeft days (₹${(double.parse(remainingBudget) / daysLeft).toStringAsFixed(0)}/day)',
+        'icon': 'timeline',
+      });
+    }
+
+    // 4. WEEKEND VS WEEKDAY PATTERN
     final patterns = getSpendingPatterns(currentMonthExpenses);
-    if (patterns['weekendSpendingHigher'] && patterns['ratio'] > 1.5) {
-      insights.add({
-        'type': 'tip',
-        'title': 'Weekend Spending Alert',
-        'description': 'You spend ${patterns['ratio'].toStringAsFixed(1)}x more on weekends',
-        'icon': 'calendar_today',
-      });
+    if (patterns['weekendTotal'] > 0 && patterns['weekdayTotal'] > 0) {
+      final ratio = patterns['ratio'];
+      if (ratio > 1.5) {
+        final extraSpending = (patterns['weekendTotal'] - patterns['weekdayTotal']).toStringAsFixed(0);
+        insights.add({
+          'type': 'warning',
+          'title': 'Weekend Spending Spike',
+          'description': '${ratio.toStringAsFixed(1)}x higher on weekends. Save ₹$extraSpending by planning weekend activities',
+          'icon': 'calendar_today',
+        });
+      } else if (ratio < 0.7) {
+        insights.add({
+          'type': 'success',
+          'title': 'Great Weekend Discipline',
+          'description': 'You spend less on weekends. Excellent financial habit!',
+          'icon': 'thumb_up',
+        });
+      }
     }
 
-    // Savings category insight
-    final savingsExpenses = currentMonthExpenses.where((e) => e.category == 'savings').toList();
-    if (savingsExpenses.isNotEmpty) {
-      final totalSavings = savingsExpenses.fold(0.0, (sum, e) => sum + e.amount);
-      insights.add({
-        'type': 'success',
-        'title': 'Savings Milestone!',
-        'description': 'You\'ve saved ₹${totalSavings.toStringAsFixed(0)} this month',
-        'icon': 'savings',
-      });
+    // 5. INCOME VS EXPENSE DETAILED ANALYSIS
+    if (incomes.isNotEmpty) {
+      final incomeExpense = getIncomeExpenseRatio(incomes, currentMonthExpenses);
+      final savingsRate = incomeExpense['savingsRate'];
+      final savings = incomeExpense['savings'].toStringAsFixed(0);
+      
+      if (incomeExpense['inProfit']) {
+        if (savingsRate >= 30) {
+          insights.add({
+            'type': 'success',
+            'title': 'Exceptional Savings: ${savingsRate.toStringAsFixed(0)}%',
+            'description': 'Saving ₹$savings this month. You\'re in the top 10% of savers!',
+            'icon': 'stars',
+          });
+        } else if (savingsRate >= 20) {
+          insights.add({
+            'type': 'success',
+            'title': 'Healthy Savings: ${savingsRate.toStringAsFixed(0)}%',
+            'description': 'Saving ₹$savings. Try to reach 30% savings rate for financial freedom',
+            'icon': 'savings',
+          });
+        } else if (savingsRate >= 10) {
+          insights.add({
+            'type': 'info',
+            'title': 'Building Savings: ${savingsRate.toStringAsFixed(0)}%',
+            'description': 'Saving ₹$savings. Increase by cutting your top expense by 15%',
+            'icon': 'account_balance_wallet',
+          });
+        } else {
+          insights.add({
+            'type': 'warning',
+            'title': 'Low Savings: ${savingsRate.toStringAsFixed(0)}%',
+            'description': 'Only ₹$savings saved. Aim for 20% minimum savings rate',
+            'icon': 'warning',
+          });
+        }
+      } else {
+        final overspend = savings.replaceAll('-', '');
+        insights.add({
+          'type': 'warning',
+          'title': 'Budget Deficit Alert',
+          'description': 'Spending ₹$overspend more than income. Cut ${categoryBreakdown.entries.first.key} by 30%',
+          'icon': 'error',
+        });
+      }
     }
 
-    // Debt alert
+    // 6. DEBT MANAGEMENT INSIGHTS
     final debtSummary = getDebtSummary(debts);
     if (debtSummary['totalOwed'] > 0) {
+      final owed = debtSummary['totalOwed'].toStringAsFixed(0);
+      if (debtSummary['hasOverdueDebts']) {
+        insights.add({
+          'type': 'warning',
+          'title': 'Overdue Debt: ₹$owed',
+          'description': 'Prioritize clearing overdue debts to maintain good relationships and credit',
+          'icon': 'priority_high',
+        });
+      } else {
+        insights.add({
+          'type': 'info',
+          'title': 'Active Debts: ₹$owed',
+          'description': 'Allocate 10-15% of income monthly to clear debts faster',
+          'icon': 'account_balance_wallet',
+        });
+      }
+    }
+    
+    if (debtSummary['totalReceivable'] > 0) {
+      final receivable = debtSummary['totalReceivable'].toStringAsFixed(0);
       insights.add({
-        'type': 'warning',
-        'title': 'Pending Debts',
-        'description': '₹${debtSummary['totalOwed'].toStringAsFixed(0)} debt to be paid',
-        'icon': 'account_balance_wallet',
+        'type': 'info',
+        'title': 'Money to Collect: ₹$receivable',
+        'description': 'Follow up on receivables to improve your cash flow',
+        'icon': 'call_received',
       });
     }
 
-    // Savings insight
-    final incomeExpense = getIncomeExpenseRatio(incomes, currentMonthExpenses);
-    if (incomeExpense['inProfit']) {
-      insights.add({
-        'type': 'success',
-        'title': 'Great Job Saving!',
-        'description': 'Saving ${incomeExpense['savingsRate'].toStringAsFixed(0)}% of your income',
-        'icon': 'savings',
-      });
-    } else if (incomes.isNotEmpty) {
+    // 7. HIGHEST SINGLE EXPENSE ALERT
+    final highestExpense = getHighestExpense(currentMonthExpenses);
+    if (highestExpense != null && highestExpense.amount > dailyAverage * 3) {
+      final percentage = (highestExpense.amount / monthlyTotal * 100).toStringAsFixed(0);
       insights.add({
         'type': 'warning',
-        'title': 'Overspending Alert',
-        'description': 'Expenses exceed income by ₹${incomeExpense['savings'].abs().toStringAsFixed(0)}',
-        'icon': 'warning',
+        'title': 'Large Expense Detected',
+        'description': '₹${highestExpense.amount.toStringAsFixed(0)} on ${highestExpense.category} (${percentage}% of budget). Plan major purchases in advance',
+        'icon': 'warning_amber',
       });
+    }
+
+    // 8. CATEGORY DIVERSITY INSIGHT
+    if (categoryBreakdown.length <= 2 && currentMonthExpenses.length > 5) {
+      insights.add({
+        'type': 'tip',
+        'title': 'Diversify Expense Categories',
+        'description': 'Track expenses in more categories for better financial visibility',
+        'icon': 'pie_chart',
+      });
+    }
+
+    // 9. DAILY AVERAGE CONTEXT
+    if (dailyAverage > 0) {
+      final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+      final suggestedDaily = (monthlyTotal * 0.8 / daysInMonth).toStringAsFixed(0);
+      
+      if (dailyAverage > double.parse(suggestedDaily)) {
+        insights.add({
+          'type': 'tip',
+          'title': 'Daily Spending: ₹${dailyAverage.toStringAsFixed(0)}',
+          'description': 'Try limiting to ₹$suggestedDaily/day to save 20% more this month',
+          'icon': 'calendar_view_day',
+        });
+      }
+    }
+
+    // 10. MILESTONE ACHIEVEMENTS
+    if (currentMonthExpenses.length >= 30) {
+      insights.add({
+        'type': 'success',
+        'title': 'Consistency Champion!',
+        'description': '${currentMonthExpenses.length} expenses tracked. Daily tracking leads to 40% better savings',
+        'icon': 'emoji_events',
+      });
+    }
+
+    // 11. CATEGORY COMPARISON WITH LAST MONTH
+    if (lastMonthExpenses.isNotEmpty && categoryBreakdown.isNotEmpty) {
+      final lastMonthBreakdown = getCategoryBreakdown(lastMonthExpenses);
+      final topCat = categoryBreakdown.entries.first.key;
+      
+      if (lastMonthBreakdown.containsKey(topCat)) {
+        final currentCatSpend = categoryBreakdown[topCat]!;
+        final lastCatSpend = lastMonthBreakdown[topCat]!;
+        final catChange = ((currentCatSpend - lastCatSpend) / lastCatSpend * 100).toStringAsFixed(0);
+        
+        if (double.parse(catChange).abs() > 25) {
+          insights.add({
+            'type': double.parse(catChange) > 0 ? 'warning' : 'success',
+            'title': '$topCat: ${catChange}% ${double.parse(catChange) > 0 ? "Increase" : "Decrease"}',
+            'description': double.parse(catChange) > 0 
+              ? 'Investigate this spike. Set a category limit to control spending'
+              : 'Great reduction! Maintain this trend for long-term savings',
+            'icon': 'analytics',
+          });
+        }
+      }
+    }
+
+    // 12. SMART RECOMMENDATIONS BASED ON SPENDING PATTERNS
+    if (monthlyTotal > 0) {
+      final foodSpend = categoryBreakdown['Food'] ?? categoryBreakdown['food'] ?? 0;
+      final transportSpend = categoryBreakdown['Transport'] ?? categoryBreakdown['transport'] ?? 0;
+      
+      if (foodSpend / monthlyTotal > 0.4) {
+        insights.add({
+          'type': 'tip',
+          'title': '💡 Food Savings Tip',
+          'description': 'Reduce outside dining by 2x/week to save ₹${(foodSpend * 0.15).toStringAsFixed(0)} monthly',
+          'icon': 'lightbulb',
+        });
+      }
+      
+      if (transportSpend / monthlyTotal > 0.3) {
+        insights.add({
+          'type': 'tip',
+          'title': '💡 Transport Savings Tip',
+          'description': 'Switch 3 trips/week to public transport to save ₹${(transportSpend * 0.2).toStringAsFixed(0)}',
+          'icon': 'lightbulb',
+        });
+      }
     }
 
     return insights;

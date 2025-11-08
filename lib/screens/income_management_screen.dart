@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../models/income.dart';
 import '../models/expense.dart';
 import '../models/user.dart';
@@ -25,16 +24,11 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
   double _currentSavings = 0.0;
   double _savingsTarget = 0.0;
   bool _isLoading = true;
-  
-  late stt.SpeechToText _speech;
-  bool _isListening = false;
-  String _voiceText = '';
 
   @override
   void initState() {
     super.initState();
     _currentUser = AuthService.currentUser;
-    _speech = stt.SpeechToText();
     _loadIncomeData();
   }
 
@@ -86,45 +80,6 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
       setState(() {
         _isLoading = false;
       });
-    }
-  }
-
-  Future<void> _startListening() async {
-    bool available = await _speech.initialize(
-      onStatus: (status) => print('Status: $status'),
-      onError: (error) => print('Error: $error'),
-    );
-
-    if (available) {
-      setState(() => _isListening = true);
-      _speech.listen(
-        onResult: (result) {
-          setState(() {
-            _voiceText = result.recognizedWords;
-          });
-          if (result.finalResult) {
-            _processVoiceInput(_voiceText);
-          }
-        },
-      );
-    }
-  }
-
-  void _stopListening() {
-    _speech.stop();
-    setState(() => _isListening = false);
-  }
-
-  void _processVoiceInput(String text) {
-    // Simple parsing for "Earned {amount}" pattern
-    final regex = RegExp(r'earned\s+(\d+)', caseSensitive: false);
-    final match = regex.firstMatch(text.toLowerCase());
-    
-    if (match != null) {
-      final amount = double.tryParse(match.group(1)!);
-      if (amount != null) {
-        _showQuickAddDialog(amount);
-      }
     }
   }
 
@@ -293,7 +248,6 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
       'target': 'लक्ष्य',
       'savingsTip': 'मासिक आय का 30% बचत करें',
       'incomeBreakdown': 'स्रोत के अनुसार आय',
-      'voiceInput': 'बोलकर जोड़ें',
       'setGoal': 'लक्ष्य निर्धारित करें',
       'monthlyGoal': 'मासिक लक्ष्य',
       'quickAdd': 'त्वरित जोड़ें',
@@ -304,8 +258,6 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
       'success': 'आय जोड़ी गई!',
       'goalUpdated': 'लक्ष्य अपडेट किया गया!',
       'amount': 'राशि',
-      'listening': 'सुन रहा है...',
-      'tapToSpeak': 'बोलने के लिए टैप करें',
       'noIncome': 'इस महीने कोई आय नहीं',
     },
     'mr': {
@@ -320,7 +272,6 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
       'target': 'लक्ष्य',
       'savingsTip': 'मासिक उत्पन्नाच्या 30% बचत करा',
       'incomeBreakdown': 'स्रोतानुसार उत्पन्न',
-      'voiceInput': 'बोलून जोडा',
       'setGoal': 'लक्ष्य सेट करा',
       'monthlyGoal': 'मासिक लक्ष्य',
       'quickAdd': 'जलद जोडा',
@@ -331,8 +282,6 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
       'success': 'उत्पन्न जोडले!',
       'goalUpdated': 'लक्ष्य अपडेट झाले!',
       'amount': 'रक्कम',
-      'listening': 'ऐकत आहे...',
-      'tapToSpeak': 'बोलण्यासाठी टॅप करा',
       'noIncome': 'या महिन्यात उत्पन्न नाही',
     },
     'en': {
@@ -347,7 +296,6 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
       'target': 'target',
       'savingsTip': 'Save 30% of monthly income for financial security',
       'incomeBreakdown': 'Income by Source',
-      'voiceInput': 'Voice Add',
       'setGoal': 'Set Goal',
       'monthlyGoal': 'Monthly Goal',
       'quickAdd': 'Quick Add',
@@ -358,8 +306,6 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
       'success': 'Income added!',
       'goalUpdated': 'Goal updated!',
       'amount': 'Amount',
-      'listening': 'Listening...',
-      'tapToSpeak': 'Tap to speak',
       'noIncome': 'No income this month',
     },
   };
@@ -410,10 +356,6 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
 
                   // Income Breakdown
                   _buildIncomeBreakdown(),
-                  const SizedBox(height: 16),
-
-                  // Voice Input Button
-                  _buildVoiceInputButton(),
                 ],
               ),
             ),
@@ -731,38 +673,6 @@ class _IncomeManagementScreenState extends State<IncomeManagementScreen> {
             );
           }).toList(),
         ],
-      ),
-    );
-  }
-
-  Widget _buildVoiceInputButton() {
-    return GestureDetector(
-      onTap: _isListening ? _stopListening : _startListening,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: _isListening ? const Color(0xFFFF5722) : const Color(0xFF46EC13),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              _isListening ? Icons.mic : Icons.mic_none,
-              color: Colors.white,
-              size: 28,
-            ),
-            const SizedBox(width: 12),
-            Text(
-              _isListening ? _getText('listening') : _getText('tapToSpeak'),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

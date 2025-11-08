@@ -8,7 +8,7 @@ import 'insights_screen.dart';
 class MainNavigationScreen extends StatefulWidget {
   final String selectedLanguage;
 
-  const MainNavigationScreen({super.key, required this.selectedLanguage});
+  const MainNavigationScreen({super.key, this.selectedLanguage = 'en'});
 
   @override
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();

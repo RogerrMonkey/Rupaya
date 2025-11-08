@@ -120,6 +120,12 @@ class DatabaseService {
         FOREIGN KEY (userId) REFERENCES $_usersTable (id)
       )
     ''');
+    
+    // Create indexes for faster queries
+    await db.execute('CREATE INDEX idx_expenses_userId_date ON $_expensesTable(userId, date)');
+    await db.execute('CREATE INDEX idx_debts_userId ON $_debtsTable(userId)');
+    await db.execute('CREATE INDEX idx_income_userId_date ON $_incomeTable(userId, date)');
+    await db.execute('CREATE INDEX idx_expenses_category ON $_expensesTable(category)');
   }
 
   // Handle database upgrades

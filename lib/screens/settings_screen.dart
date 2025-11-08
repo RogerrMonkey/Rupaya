@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import '../services/voice_permission_manager.dart';
+import '../services/export_import_service.dart';
 import '../screens/splash_screen.dart';
 import '../models/user.dart';
 
@@ -14,10 +14,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _backupEnabled = false;
   bool _notificationsEnabled = true;
-  bool _voiceInputEnabled = true;
-  String _selectedLanguage = 'en';
   User? _currentUser;
   
   void _onUserStateChanged() {
@@ -29,17 +26,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedLanguage = widget.selectedLanguage;
     _currentUser = AuthService.currentUser;
     AuthService.addListener(_onUserStateChanged);
-    _loadVoiceInputPreference();
-  }
-
-  Future<void> _loadVoiceInputPreference() async {
-    final enabled = await VoicePermissionManager.isVoiceEnabled();
-    setState(() {
-      _voiceInputEnabled = enabled;
-    });
   }
   
   @override
@@ -154,44 +142,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             const SizedBox(height: 16),
 
-            // Language Selection
-            _buildSettingsCard(
-              title: _getText('language'),
-              subtitle: _getLanguageDisplayName(_selectedLanguage),
-              icon: Icons.language,
-              onTap: _showLanguageDialog,
-            ),
-
-            const SizedBox(height: 12),
-
-            // Voice Input Toggle
-            _buildToggleCard(
-              title: _getText('voiceInput'),
-              subtitle: _getText('voiceInputDesc'),
-              icon: Icons.mic,
-              value: _voiceInputEnabled,
-              onChanged: (value) async {
-                await VoicePermissionManager.setVoiceEnabled(value);
-                setState(() => _voiceInputEnabled = value);
-                
-                // Show feedback
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      value 
-                        ? _getText('voiceEnabled') 
-                        : _getText('voiceDisabled'),
-                    ),
-                    backgroundColor: const Color(0xFF46EC13),
-                    behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              },
-            ),
-
-            const SizedBox(height: 12),
-
             // Notifications Toggle
             _buildToggleCard(
               title: _getText('notifications'),
@@ -215,17 +165,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             const SizedBox(height: 16),
 
-            // Cloud Backup Toggle
-            _buildToggleCard(
-              title: _getText('cloudBackup'),
-              subtitle: _getText('cloudBackupDesc'),
-              icon: Icons.cloud_upload,
-              value: _backupEnabled,
-              onChanged: (value) => setState(() => _backupEnabled = value),
-            ),
-
-            const SizedBox(height: 12),
-
             // Export Data
             _buildSettingsCard(
               title: _getText('exportData'),
@@ -242,48 +181,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: _getText('importDataDesc'),
               icon: Icons.upload,
               onTap: _importData,
-            ),
-
-            const SizedBox(height: 24),
-
-            // Support Section
-            Text(
-              _getText('support'),
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Help & FAQ
-            _buildSettingsCard(
-              title: _getText('help'),
-              subtitle: _getText('helpDesc'),
-              icon: Icons.help_outline,
-              onTap: () => _showHelpDialog(),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Privacy Policy
-            _buildSettingsCard(
-              title: _getText('privacy'),
-              subtitle: _getText('privacyDesc'),
-              icon: Icons.privacy_tip_outlined,
-              onTap: () => _showPrivacyDialog(),
-            ),
-
-            const SizedBox(height: 12),
-
-            // About App
-            _buildSettingsCard(
-              title: _getText('about'),
-              subtitle: _getText('aboutDesc'),
-              icon: Icons.info_outline,
-              onTap: () => _showAboutDialog(),
             ),
 
             const SizedBox(height: 24),
@@ -467,74 +364,246 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showLanguageDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(_getText('selectLanguage')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildLanguageOption('hi', 'हिंदी'),
-            _buildLanguageOption('mr', 'मराठी'),
-            _buildLanguageOption('en', 'English'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(_getText('cancel')),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLanguageOption(String code, String name) {
-    return RadioListTile<String>(
-      value: code,
-      groupValue: _selectedLanguage,
-      onChanged: (value) {
-        setState(() {
-          _selectedLanguage = value!;
-        });
-        Navigator.pop(context);
-      },
-      title: Text(name),
-      activeColor: const Color(0xFF46EC13),
-    );
-  }
-
   void _exportData() async {
-    // Show loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(color: Color(0xFF46EC13)),
-      ),
-    );
+    try {
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Color(0xFF46EC13)),
+        ),
+      );
 
-    // Simulate export
-    await Future.delayed(const Duration(seconds: 2));
-    Navigator.pop(context);
+      // Export data to file
+      final filePath = await ExportImportService.exportToFile();
+      
+      // Get export summary
+      final exportData = await ExportImportService.exportAllData();
+      final summary = ExportImportService.getExportSummary(exportData);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_getText('exportSuccess')),
-        backgroundColor: const Color(0xFF46EC13),
-      ),
-    );
+      // Close loading
+      if (mounted) Navigator.pop(context);
+
+      // Show success dialog with option to share
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Color(0xFF46EC13), size: 28),
+                SizedBox(width: 12),
+                Text('Export Successful'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(summary),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, size: 16, color: Colors.grey),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'File saved to Documents folder',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Done'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  try {
+                    await ExportImportService.shareExportFile(filePath);
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Share failed: ${e.toString()}'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.share),
+                label: const Text('Share'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF46EC13),
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading if still showing
+      if (mounted) Navigator.pop(context);
+      
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
-  void _importData() {
-    // TODO: Implement import functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_getText('importComingSoon')),
-        backgroundColor: const Color(0xFF46EC13),
-      ),
-    );
+  void _importData() async {
+    try {
+      // Show file picker and read data
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Color(0xFF46EC13)),
+        ),
+      );
+
+      final importData = await ExportImportService.pickAndImportFile();
+      
+      // Close loading
+      if (mounted) Navigator.pop(context);
+
+      // Show confirmation dialog
+      if (mounted) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Confirm Import'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('This will import the following data:'),
+                const SizedBox(height: 12),
+                Text('• ${(importData['expenses'] as List).length} expenses'),
+                Text('• ${(importData['incomes'] as List).length} incomes'),
+                Text('• ${(importData['debts'] as List).length} debts'),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber, color: Colors.orange.shade700, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'This will add to your existing data',
+                          style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF46EC13),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Import'),
+              ),
+            ],
+          ),
+        );
+
+        if (confirmed == true && mounted) {
+          // Show loading
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => const Center(
+              child: CircularProgressIndicator(color: Color(0xFF46EC13)),
+            ),
+          );
+
+          // Import data
+          final results = await ExportImportService.importData(importData);
+          
+          // Close loading
+          if (mounted) Navigator.pop(context);
+
+          // Show success
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Color(0xFF46EC13), size: 28),
+                    SizedBox(width: 12),
+                    Text('Import Successful'),
+                  ],
+                ),
+                content: Text(ExportImportService.getImportSummary(results)),
+                actions: [
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF46EC13),
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Done'),
+                  ),
+                ],
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      // Close loading if still showing
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
   }
 
   void _showEditProfileDialog() {
@@ -626,73 +695,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showHelpDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(_getText('help')),
-        content: Text(_getText('helpContent')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(_getText('ok')),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showPrivacyDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(_getText('privacy')),
-        content: Text(_getText('privacyContent')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(_getText('ok')),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAboutDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(_getText('about')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.account_balance_wallet_rounded,
-              size: 64,
-              color: Color(0xFF46EC13),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Rupaya',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(_getText('aboutContent')),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(_getText('ok')),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showClearDataDialog() {
     showDialog(
       context: context,
@@ -773,19 +775,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
-  }
-
-  String _getLanguageDisplayName(String code) {
-    switch (code) {
-      case 'hi':
-        return 'हिंदी';
-      case 'mr':
-        return 'मराठी';
-      case 'en':
-        return 'English';
-      default:
-        return 'English';
-    }
   }
 
   String _getText(String key) {
