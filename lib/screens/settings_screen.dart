@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/export_import_service.dart';
+import '../services/database_service.dart';
 import '../screens/splash_screen.dart';
 import '../models/user.dart';
 
@@ -703,22 +704,96 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _getText('clearDataTitle'),
           style: const TextStyle(color: Color(0xFFF44336)),
         ),
-        content: Text(_getText('clearDataWarning')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_getText('clearDataWarning')),
+            const SizedBox(height: 16),
+            const Text(
+              '⚠️ This action will:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text('• Delete all expenses'),
+            const Text('• Delete all debts'),
+            const Text('• Delete all income records'),
+            const Text('• Delete your account'),
+            const SizedBox(height: 8),
+            const Text(
+              'This cannot be undone!',
+              style: TextStyle(
+                color: Color(0xFFF44336),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(_getText('cancel')),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              // TODO: Clear all data
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(_getText('dataCleared')),
-                  backgroundColor: const Color(0xFFF44336),
+              
+              // Show loading indicator
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xFFF44336),
+                  ),
                 ),
               );
+              
+              try {
+                // Clear all data from database
+                await DatabaseService.clearAllData();
+                
+                // Logout user
+                await AuthService.logout();
+                
+                // Close loading dialog
+                if (mounted) {
+                  Navigator.pop(context);
+                }
+                
+                // Show success message
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(_getText('dataCleared')),
+                      backgroundColor: const Color(0xFFF44336),
+                    ),
+                  );
+                }
+                
+                // Navigate to splash screen (which will redirect to login)
+                if (mounted) {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (context) => const SplashScreen()),
+                    (route) => false,
+                  );
+                }
+              } catch (e) {
+                // Close loading dialog
+                if (mounted) {
+                  Navigator.pop(context);
+                }
+                
+                // Show error message
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error clearing data: ${e.toString()}'),
+                      backgroundColor: const Color(0xFFF44336),
+                    ),
+                  );
+                }
+              }
             },
             child: Text(
               _getText('clearData'),
